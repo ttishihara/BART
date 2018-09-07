@@ -1,1 +1,3 @@
-BART project\n Tomo Ishihara, Connor Swanson, Randy Ma, Lili Li, Shivee Singh
+##BART project  
+Tomo Ishihara, Connor Swanson, Randy Ma, Lili Li, Shivee Singh
+
