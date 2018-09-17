@@ -5,11 +5,15 @@ import os
 import glob
 import shutil
 import csv
+import psycopg2
+
+
 
 def ProcessBart(tmpDir, dataDir, SQLConn=None, schema='cls', table='bart'):
     cleanTmp(tmpDir)
     unzipFiles(dataDir, tmpDir)
     processExcelFiles(tmpDir)
+    loadIntoDB(SQLConn, schema, table)
     print("FINISHED")
     return
 
@@ -135,9 +139,28 @@ def output_to_csv(to_csv, tmpDir):
         for line in to_csv:
             writer.writerow(line)
 
+def loadIntoDB(SQLConn, schema, table):
+    SQLCursor = SQLConn.cursor()
+    query1='DROP TABLE IF EXISTS '+ '{0}.{1}'.format(schema,table);
+    SQLCursor.execute(query1)
+    SQLCursor.execute("""
+      CREATE TABLE %s.%s
+      (
+      mon int
+      , yr int
+      , daytype varchar(15)
+      , start varchar(2)
+      , term varchar(2)
+      , riders float
+      );""" % (schema, table))
+    SQLCursor.execute("""COPY %s.%s FROM '%s' CSV;"""
+                      % (schema, table, tmpDir + 'toLoad.csv'))
+    SQLConn.commit()
+
 
 if __name__ == "__main__":
     dataDir = sys.argv[1]
     tmpDir = sys.argv[2]
+    #LCLconnR = psycopg2.connect(" dbname='shivee' user='shivee' host ='localhost' ")
+    #ProcessBart(tmpDir, dataDir, LCLconnR)
 
-    ProcessBart(tmpDir, dataDir)
