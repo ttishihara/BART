@@ -72,10 +72,12 @@ def processExcelFiles(tmpDir):
     filepaths = getFilepaths(tmpDir)
 
     to_csv = []
+    #iterate files
     for xls in filepaths:
         xl = xlrd.open_workbook(xls)
         sheet_names = xl.sheet_names()
 
+        # iterate sheets
         for sheet in sheet_names:
             daytype = sheet.split()[0]
             daytype = standardize_daytype(daytype)
@@ -85,9 +87,10 @@ def processExcelFiles(tmpDir):
 
             sh = xl.sheet_by_name(sheet)
 
-            date = xlrd.xldate_as_datetime(sh.cell_value(0, 6), 0)
-            month = date.month
-            year = date.year
+            if daytype == 'weekday':
+                date = xlrd.xldate_as_datetime(sh.cell_value(0, 6), 0)
+                month = date.month
+                year = date.year
 
             # Get exit stations
             col_i = 1
