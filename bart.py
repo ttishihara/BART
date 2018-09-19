@@ -12,8 +12,9 @@ import psycopg2
 def ProcessBart(tmpDir, dataDir, SQLConn=None, schema='cls', table='bart'):
     cleanTmp(tmpDir)
     unzipFiles(dataDir, tmpDir)
-    processExcelFiles(tmpDir)
-    loadIntoDB(SQLConn, schema, table)
+    toLoad = processExcelFiles(tmpDir)
+    output_to_csv(toLoad, tmpDir)
+    loadIntoDB(SQLConn, schema, table, tmpDir)
     print("FINISHED")
     return
 
@@ -21,6 +22,7 @@ def ProcessBart(tmpDir, dataDir, SQLConn=None, schema='cls', table='bart'):
 def cleanTmp(tmpDir):
     """
     Create a clean temp directory at the specified location.
+    If the temp directory exists, recreate it.
     """
 
     tmpDir = os.path.abspath(tmpDir)
@@ -59,6 +61,7 @@ def unzipFiles(dataDir, tmpDir):
         # check if file is a zip file
         if zipfile.is_zipfile(file_):
             with zipfile.ZipFile(file_, 'r') as zfile:
+                # extract contents of zipfile into temp directory
                 zfile.extractall(tmpDir)
 
 def standardize_daytype(daytype):
@@ -73,15 +76,21 @@ def standardize_daytype(daytype):
 
 
 def processExcelFiles(tmpDir):
+    """
+    Process all .xls files in tmpDir and reshapes it into the format
+    we need for uploading to our SQL database.
+
+    Returns a list of tuples where each tuple contains information for one row.
+    """
     filepaths = getFilepaths(tmpDir)
 
     to_csv = []
-    #iterate files
+    #iterate over xls files
     for xls in filepaths:
         xl = xlrd.open_workbook(xls)
         sheet_names = xl.sheet_names()
 
-        # iterate sheets
+        # iterate over sheets in each xls file
         for sheet in sheet_names:
             daytype = sheet.split()[0]
             daytype = standardize_daytype(daytype)
@@ -91,6 +100,7 @@ def processExcelFiles(tmpDir):
 
             sh = xl.sheet_by_name(sheet)
 
+            # get month and year from cell G1 of the first sheet
             if daytype == 'weekday':
                 date = xlrd.xldate_as_datetime(sh.cell_value(0, 6), 0)
                 month = date.month
@@ -110,7 +120,7 @@ def processExcelFiles(tmpDir):
                 entry_stations.append(sh.cell_value(row_i, 0))
                 row_i += 1
             
-            # Fix names for number based stations (ie 19th, 16th)
+            # Fix names for numerically named stations (ie 19th, 16th)
             exit_stations = [ str(int(station)) if type(station) == float else station for station in exit_stations ]
             entry_stations = [ str(int(station)) if type(station) == float else station for station in entry_stations ]
 
@@ -126,20 +136,30 @@ def processExcelFiles(tmpDir):
                     entry_ix += 1
                 exit_ix += 1
 
-            # append reshaped data to to_csv list
+            # append reshaped data to overall list
             to_csv = to_csv + reshaped_data
 
-    output_to_csv(to_csv, tmpDir)
+
+    return to_csv
 
 
 def output_to_csv(to_csv, tmpDir):
+    """
+    Takes a list of tuples and creates a .csv file in the 
+    specified temp directory.
+    """
     outputPath = os.path.join(tmpDir, 'toLoad.csv')
     with open(outputPath, "w") as csv_file:
         writer = csv.writer(csv_file, delimiter=',')
         for line in to_csv:
             writer.writerow(line)
 
-def loadIntoDB(SQLConn, schema, table):
+def loadIntoDB(SQLConn, schema, table, tmpDir):
+    """
+    Gets toLoad.csv from the temp directory, creates the table, and 
+    uploads the contents of toLoad.csv.
+    """
+
     SQLCursor = SQLConn.cursor()
     query1='DROP TABLE IF EXISTS '+ '{0}.{1}'.format(schema,table);
     SQLCursor.execute(query1)
@@ -153,14 +173,15 @@ def loadIntoDB(SQLConn, schema, table):
       , term varchar(2)
       , riders float
       );""" % (schema, table))
+    path = os.path.abspath(os.path.join(tmpDir, 'toLoad.csv'))
     SQLCursor.execute("""COPY %s.%s FROM '%s' CSV;"""
-                      % (schema, table, tmpDir + 'toLoad.csv'))
+                      % (schema, table, path))
     SQLConn.commit()
 
 
 if __name__ == "__main__":
     dataDir = sys.argv[1]
     tmpDir = sys.argv[2]
-    #LCLconnR = psycopg2.connect(" dbname='shivee' user='shivee' host ='localhost' ")
-    #ProcessBart(tmpDir, dataDir, LCLconnR)
+    #SQLconnR = psycopg2.connect(" dbname='tomo' user='tomo' host ='localhost' password = '' ")
+    ProcessBart(tmpDir, dataDir, SQLconnR)
 
